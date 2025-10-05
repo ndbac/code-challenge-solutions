@@ -11,7 +11,7 @@ import {
   idParamSchema,
 } from "../validation/schemas";
 
-const validate = (
+export const validate = (
   schema: Joi.ObjectSchema,
   target: "body" | "query" | "params" = "body"
 ) => {
