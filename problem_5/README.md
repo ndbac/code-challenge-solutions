@@ -5,6 +5,7 @@
 - **Complete CRUD Operations**: Create, Read, Update, Delete for Users and Products
 - **TypeScript**: Full type safety and modern JavaScript features
 - **SQLite Database**: Lightweight, file-based database with raw SQL queries
+- **Repository Pattern**: Clean separation of data access logic from business logic
 - **Input Validation**: Joi-based request validation with comprehensive error messages
 - **Database Migrations**: Professional migration system for schema management
 - **Error Handling**: Centralized error handling with custom error types

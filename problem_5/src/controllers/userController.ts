@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { database } from "../database/connection";
+import { userRepository } from "../repositories";
 import { ApiError, asyncHandler } from "../middleware/errorHandler";
 import {
   User,
@@ -15,28 +15,12 @@ export class UserController {
     async (req: Request, res: Response): Promise<void> => {
       const userData: CreateUserRequest = req.body;
 
-      const sql = `
-            INSERT INTO users (name, email, age, status) 
-            VALUES (?, ?, ?, ?)
-        `;
-
-      const params = [
-        userData.name,
-        userData.email,
-        userData.age || null,
-        userData.status || "active",
-      ];
-
-      const result = await database.run(sql, params);
-
-      if (!result.lastID) {
-        throw new ApiError("Failed to create user", 500);
-      }
-
-      const createdUser = await database.get<User>(
-        "SELECT * FROM users WHERE id = ?",
-        [result.lastID]
-      );
+      const createdUser = await userRepository.createUser({
+        name: userData.name,
+        email: userData.email,
+        age: userData.age,
+        status: userData.status || "active",
+      });
 
       const response: ApiResponse<User> = {
         success: true,
@@ -64,68 +48,20 @@ export class UserController {
           : undefined,
       };
 
-      const whereConditions: string[] = [];
-      const params: any[] = [];
-
-      if (filters.name) {
-        whereConditions.push("name LIKE ?");
-        params.push(`%${filters.name}%`);
-      }
-
-      if (filters.email) {
-        whereConditions.push("email LIKE ?");
-        params.push(`%${filters.email}%`);
-      }
-
-      if (filters.status) {
-        whereConditions.push("status = ?");
-        params.push(filters.status);
-      }
-
-      if (filters.age_min) {
-        whereConditions.push("age >= ?");
-        params.push(filters.age_min);
-      }
-
-      if (filters.age_max) {
-        whereConditions.push("age <= ?");
-        params.push(filters.age_max);
-      }
-
-      const whereClause =
-        whereConditions.length > 0
-          ? `WHERE ${whereConditions.join(" AND ")}`
-          : "";
-
-      const countSql = `SELECT COUNT(*) as count FROM users ${whereClause}`;
-      const countResult = await database.get<{ count: number }>(
-        countSql,
-        params
+      const result = await userRepository.findUsersWithFilters(
+        filters,
+        page,
+        limit
       );
-      const total = countResult?.count || 0;
-
-      const offset = (page - 1) * limit;
-      const dataSql = `
-            SELECT * FROM users 
-            ${whereClause}
-            ORDER BY created_at DESC 
-            LIMIT ? OFFSET ?
-        `;
-
-      const users = await database.query<User>(dataSql, [
-        ...params,
-        limit,
-        offset,
-      ]);
 
       const response: PaginatedResponse<User> = {
         success: true,
-        data: users,
+        data: result.data,
         pagination: {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit),
+          page: result.page,
+          limit: result.limit,
+          total: result.total,
+          totalPages: result.totalPages,
         },
       };
 
@@ -141,10 +77,7 @@ export class UserController {
         throw new ApiError("Invalid user ID", 400);
       }
 
-      const user = await database.get<User>(
-        "SELECT * FROM users WHERE id = ?",
-        [id]
-      );
+      const user = await userRepository.findById(Number(id));
 
       if (!user) {
         throw new ApiError("User not found", 404);
@@ -168,57 +101,16 @@ export class UserController {
         throw new ApiError("Invalid user ID", 400);
       }
 
-      const existingUser = await database.get<User>(
-        "SELECT * FROM users WHERE id = ?",
-        [id]
-      );
+      const updatedUser = await userRepository.updateUser(Number(id), {
+        name: updateData.name,
+        email: updateData.email,
+        age: updateData.age,
+        status: updateData.status,
+      });
 
-      if (!existingUser) {
+      if (!updatedUser) {
         throw new ApiError("User not found", 404);
       }
-
-      const updateFields: string[] = [];
-      const params: any[] = [];
-
-      if (updateData.name !== undefined) {
-        updateFields.push("name = ?");
-        params.push(updateData.name);
-      }
-
-      if (updateData.email !== undefined) {
-        updateFields.push("email = ?");
-        params.push(updateData.email);
-      }
-
-      if (updateData.age !== undefined) {
-        updateFields.push("age = ?");
-        params.push(updateData.age);
-      }
-
-      if (updateData.status !== undefined) {
-        updateFields.push("status = ?");
-        params.push(updateData.status);
-      }
-
-      updateFields.push("updated_at = CURRENT_TIMESTAMP");
-      params.push(id);
-
-      const sql = `
-            UPDATE users 
-            SET ${updateFields.join(", ")} 
-            WHERE id = ?
-        `;
-
-      const result = await database.run(sql, params);
-
-      if (result.changes === 0) {
-        throw new ApiError("Failed to update user", 500);
-      }
-
-      const updatedUser = await database.get<User>(
-        "SELECT * FROM users WHERE id = ?",
-        [id]
-      );
 
       const response: ApiResponse<User> = {
         success: true,
@@ -238,19 +130,10 @@ export class UserController {
         throw new ApiError("Invalid user ID", 400);
       }
 
-      const existingUser = await database.get<User>(
-        "SELECT * FROM users WHERE id = ?",
-        [id]
-      );
+      const deleted = await userRepository.delete(Number(id));
 
-      if (!existingUser) {
+      if (!deleted) {
         throw new ApiError("User not found", 404);
-      }
-
-      const result = await database.run("DELETE FROM users WHERE id = ?", [id]);
-
-      if (result.changes === 0) {
-        throw new ApiError("Failed to delete user", 500);
       }
 
       const response: ApiResponse = {

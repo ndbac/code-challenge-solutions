@@ -1,0 +1,107 @@
+flowchart TD
+    %% User and Client Layer
+    User[👤 User] --> Action[🎮 Performs Game Action]
+    Action --> WebApp[🌐 Web Application]
+    
+    %% Action Token Generation
+    WebApp --> ActionSystem[⚡ Action Generation System]
+    ActionSystem --> TokenGen{🎫 Generate Action Token}
+    TokenGen --> |Signed Token| WebApp
+    
+    %% API Request Flow
+    WebApp --> |POST /api/v1/scores/update| LoadBalancer[⚖️ Load Balancer]
+    LoadBalancer --> APIGateway[🚪 API Gateway]
+    
+    %% Authentication Flow
+    APIGateway --> AuthCheck{🔐 JWT Valid?}
+    AuthCheck --> |No| AuthError[❌ 401 Unauthorized]
+    AuthCheck --> |Yes| RateLimit{🚦 Rate Limit Check}
+    
+    %% Rate Limiting
+    RateLimit --> |Exceeded| RateLimitError[❌ 429 Too Many Requests]
+    RateLimit --> |OK| TokenValidation{🎫 Action Token Valid?}
+    
+    %% Token Validation
+    TokenValidation --> |Invalid| TokenError[❌ Invalid Token]
+    TokenValidation --> |Valid| ScoreService[📊 Score Management Service]
+    
+    %% Score Processing
+    ScoreService --> DBTransaction{🗄️ Begin Transaction}
+    DBTransaction --> UpdateScore[📈 Update User Score]
+    UpdateScore --> LogAction[📝 Log Score Update]
+    LogAction --> MarkTokenUsed[✅ Mark Token as Used]
+    MarkTokenUsed --> CommitTx{💾 Commit Transaction}
+    
+    %% Transaction Results
+    CommitTx --> |Success| CacheUpdate[⚡ Update Cache]
+    CommitTx --> |Failure| Rollback[🔄 Rollback & Error]
+    
+    %% Cache and Real-time Updates
+    CacheUpdate --> InvalidateCache[🗑️ Invalidate Leaderboard Cache]
+    InvalidateCache --> GetNewLeaderboard[🏆 Get Updated Top 10]
+    GetNewLeaderboard --> WSBroadcast[🔌 WebSocket Broadcast]
+    
+    %% WebSocket Flow
+    WSBroadcast --> ConnectedClients{👥 Connected Clients}
+    ConnectedClients --> |Update UI| WebApp
+    ConnectedClients --> |Update UI| OtherClients[👥 Other Connected Users]
+    
+    %% Response Flow
+    CacheUpdate --> SuccessResponse[✅ Success Response]
+    SuccessResponse --> WebApp
+    WebApp --> |Display Update| User
+    
+    %% Leaderboard Query Flow
+    User --> |View Leaderboard| LeaderboardRequest[📊 GET /api/v1/scoreboard/top10]
+    LeaderboardRequest --> LoadBalancer
+    LoadBalancer --> LeaderboardAPI[🏆 Leaderboard API]
+    LeaderboardAPI --> CacheCheck{⚡ Check Redis Cache}
+    CacheCheck --> |Hit| ReturnCached[📋 Return Cached Data]
+    CacheCheck --> |Miss| QueryDB[🗄️ Query Database]
+    QueryDB --> UpdateCache2[⚡ Update Cache]
+    UpdateCache2 --> ReturnData[📋 Return Leaderboard]
+    ReturnCached --> WebApp
+    ReturnData --> WebApp
+    
+    %% WebSocket Connection Flow
+    WebApp --> |Connect WebSocket| WSServer[🔌 WebSocket Server]
+    WSServer --> WSAuth{🔐 Authenticate WS Connection}
+    WSAuth --> |Valid| WSSubscribe[📡 Subscribe to Updates]
+    WSAuth --> |Invalid| WSReject[❌ Reject Connection]
+    WSSubscribe --> SendInitialData[📊 Send Initial Leaderboard]
+    
+    %% Error Handling
+    AuthError --> ErrorResponse[📤 Error Response]
+    RateLimitError --> ErrorResponse
+    TokenError --> ErrorResponse
+    Rollback --> ErrorResponse
+    WSReject --> CloseConnection[🔌 Close WebSocket]
+    ErrorResponse --> WebApp
+    
+    %% Monitoring and Logging
+    ScoreService --> AuditLog[(📝 Audit Database)]
+    ScoreService --> Monitoring[📈 Monitoring System]
+    AuthCheck --> Monitoring
+    RateLimit --> Monitoring
+    WSServer --> Monitoring
+    
+    %% Data Storage
+    UpdateScore --> PostgreSQL[(🗄️ PostgreSQL Database)]
+    LogAction --> PostgreSQL
+    CacheUpdate --> Redis[(⚡ Redis Cache)]
+    MarkTokenUsed --> Redis
+    
+    %% Styling
+    classDef userClass fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef serviceClass fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef dataClass fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
+    classDef errorClass fill:#ffebee,stroke:#c62828,stroke-width:2px
+    classDef successClass fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
+    classDef decisionClass fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+    
+    class User,WebApp,OtherClients userClass
+    class ActionSystem,ScoreService,LeaderboardAPI,WSServer,LoadBalancer,APIGateway serviceClass
+    class PostgreSQL,Redis,AuditLog dataClass
+    class AuthError,RateLimitError,TokenError,Rollback,WSReject,ErrorResponse errorClass
+    class SuccessResponse,SendInitialData,ReturnCached,ReturnData successClass
+    class AuthCheck,RateLimit,TokenValidation,DBTransaction,CommitTx,CacheCheck,WSAuth,ConnectedClients decisionClass
